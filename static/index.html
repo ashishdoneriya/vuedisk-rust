@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<meta charset="utf-8" />
+	<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+	<title>VueDisk</title>
+	<meta content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=0" name="viewport" />
+	<meta content="yes" name="apple-mobile-web-app-capable" />
+	<meta content="black" name="apple-mobile-web-app-status-bar-style" />
+	<meta content="telephone=no" name="format-detection" />
+	<link rel="icon" type="image/png" href="icons/favico.png" />
+	<link rel="stylesheet" href="css/theme/index.css">
+	<link rel="stylesheet" href="fonts/Roboto/roboto.css">
+	<link rel="stylesheet" href="css/index.css">
+	<script src="js/vue.min.js"></script>
+	<script src="js/elementui.min.js"></script>
+	<script src="js/element.en.js"></script>
+	<script src="js/axios.min.js"></script>
+	<script src="js/cookies.min.js"></script>
+	<script src="js/vue-lazyload.js"></script>
+	<script src="js/v-img.min.js"></script>
+	<script src="js/httpVueLoader.js"></script>
+</head>
+
+<body>
+	<div id="vapp">
+		<!-- FIRST TIME LOADER -->
+		<div v-show="firstTimeOpened" class="spinner"></div>
+
+		<!-- FILE MANAGER SCREEN start -->
+		<el-container v-cloak class="container" v-bind:style="{maxWidth : pageWidth}" v-show="!firstTimeOpened">
+			<el-header class="text-center mainTitle">
+				<h1>File Manager</h1>
+			</el-header>
+			<el-main>
+				<!-- ACTIONS BAR start-->
+				<el-row class="mPaddingLeft20" type="flex" class="row-bg" justify="space-between">
+					<el-col>
+						<div class="flex">
+							<div v-if="!isMobile">
+								<el-button size="small" @click="openLocalUploadDialog()" type="primary"
+									icon="el-icon-upload">Upload</el-button>
+							</div>
+							<div v-if="isMobile">
+								<el-button size="small" @click="openLocalUploadDialog()" type="primary"
+									icon="el-icon-upload"></el-button>
+							</div>
+							<div v-if="!isMobile">
+								<el-button type="primary" @click="openRemoteUploadDialog()" size="small"
+									icon="el-icon-upload">Remote Upload</el-button>
+							</div>
+
+							<div>
+								<el-dropdown trigger="click" @command="handleCommand">
+									<el-button type="primary" size="small">
+										Actions<i class="el-icon-arrow-down el-icon--right"></i>
+									</el-button>
+									<el-dropdown-menu slot="dropdown">
+										<el-dropdown-item command="cut" :disabled="multipleSelection.length == 0"
+											icon="el-icon-scissors">Cut</el-dropdown-item>
+										<el-dropdown-item command="copy" :disabled="multipleSelection.length == 0"
+											icon="el-icon-document-copy">Copy</el-dropdown-item>
+										<el-dropdown-item command="paste" :disabled="operation.parentPath.length == 0"
+											icon="el-icon-brush">Paste</el-dropdown-item>
+										<el-dropdown-item command="delete" :disabled="multipleSelection.length == 0"
+											icon="el-icon-delete">Delete</el-dropdown-item>
+										<el-dropdown-item command="rename" :disabled="multipleSelection.length != 1"
+											icon="el-icon-edit">Rename</el-dropdown-item>
+										<el-dropdown-item command="size" :disabled="multipleSelection.length == 0"
+											icon="el-icon-s-data">Get Size</el-dropdown-item>
+										<el-dropdown-item command="download-zip"
+											:disabled="multipleSelection.length == 0" icon="el-icon-s-data">Download
+											Zip</el-dropdown-item>
+									</el-dropdown-menu>
+								</el-dropdown>
+							</div>
+							<div v-if="!isMobile" style="display: inline-block">
+								<el-radio-group v-model="displayMode" size="small">
+									<el-radio label="list" border style="margin-right:0px">List</el-radio>
+									<el-radio label="gallery" border>Gallery</el-radio>
+								</el-radio-group>
+							</div>
+							<div v-if="!isMobile"><i class="el-icon-refresh" style="font-weight: bold;font-size: 20px"
+									@click="refresh()"></i>
+							</div>
+							<div style="flex: 1 1"></div>
+							<div>
+								<el-dropdown trigger="click" @command="newCommand">
+									<el-button style="float:right" type="primary" size="small"
+										icon="el-icon-plus">New</el-button>
+									<el-dropdown-menu slot="dropdown">
+										<el-dropdown-item command="folder"
+											icon="el-icon-folder">Folder</el-dropdown-item>
+										<el-dropdown-item command="file" icon="el-icon-document">File</el-dropdown-item>
+									</el-dropdown-menu>
+								</el-dropdown>
+							</div>
+						</div>
+					</el-col>
+				</el-row>
+				<!-- ACTIONS BAR end -->
+
+				<!-- BREAD CRUMB BAR start-->
+				<el-row class="mPaddingLeft20" style="margin: 25px 0;">
+					<el-col :span="24">
+						<el-breadcrumb separator-class="el-icon-arrow-right">
+							<el-breadcrumb-item>
+								<a @click="openDir('/')">Home</a>
+							</el-breadcrumb-item>
+							<el-breadcrumb-item v-for="(dir, index) in stack">
+								<a @click="openStack(index)">{{dir}}</a>
+							</el-breadcrumb-item>
+						</el-breadcrumb>
+					</el-col>
+				</el-row>
+				<!-- BREAD CRUMB BAR end-->
+
+				<!-- FILES LISTING start-->
+				<el-row class="mPaddingLeft5" type="flex" class="row-bg" justify="center">
+					<el-col :span="24">
+
+						<!-- FILES LISTING - LIST MODE start-->
+						<el-card v-show="displayMode == 'list'">
+							<el-table ref="multipleTable" :data="tableDataFinal" v-loading="isTableLoading"
+								style="width: 100%" @selection-change="handleSelectionChange" size="medium"
+								highlight-current-row>
+								<el-table-column type="selection" style="padding-left:0px !important" width="40">
+								</el-table-column>
+								<el-table-column label="Name">
+									<template slot-scope="scope">
+										<div v-if="scope.row.isDir" @click="openDirFromList(scope.row.name)"
+											style="height:100%;width:100%;cursor:pointer">
+											<span class="fonts" style="font-weight: 500;"
+												@click="openDirFromList(scope.row.name)">{{ scope.row.name }}</span>
+										</div>
+										<div v-if="!scope.row.isDir" @click="viewFile(scope.row)"
+											style="height:100%;width:100%;cursor:pointer">
+											<span class="fonts" @click="viewFile(scope.row)">{{
+												scope.row.name}}</span>
+										</div>
+									</template>
+								</el-table-column>
+								<el-table-column v-if="!isMobile" align="right" width="160" label="Size">
+									<template slot-scope="scope">
+										<div style="display:flex;align-items:center;justify-content:center">
+											<div style="flex:1">
+												<el-button v-if="scope.row.isAudio || scope.row.isVideo" size="mini"
+													@click="play(scope.row)">Play</el-button>
+											</div>
+											<div style="flex:1" v-if="!scope.row.isDir">
+												<span class="fonts1">{{ scope.row.size }}</span>
+											</div>
+											<div style="flex:1" v-if="scope.row.isDir">
+												<span class="fonts1">Folder</span>
+											</div>
+										</div>
+									</template>
+								</el-table-column>
+								<el-table-column align="right" width="40">
+									<template slot-scope="scope">
+										<div style="display:flex">
+											<div style="flex:1;cursor:pointer">
+												<el-dropdown trigger="click" @command="handleRowActions">
+													<el-button type="primary" size="mini"
+														style="padding:5px;color:#fff;background-color:#eee;border-color:#eee">
+														<i class="el-icon-more" style="color:#222"></i>
+													</el-button>
+													<el-dropdown-menu slot="dropdown">
+														<el-dropdown-item
+															:command="{command: 'download', row: scope.row}"
+															icon="el-icon-download">Download</el-dropdown-item>
+														<el-dropdown-item :command="{command: 'cut', row: scope.row}"
+															icon="el-icon-scissors">Cut</el-dropdown-item>
+														<el-dropdown-item :command="{command: 'copy', row: scope.row}"
+															icon="el-icon-document-copy">Copy</el-dropdown-item>
+														<el-dropdown-item :command="{command: 'rename', row: scope.row}"
+															icon="el-icon-edit">Rename</el-dropdown-item>
+														<el-dropdown-item :command="{command: 'delete', row: scope.row}"
+															icon="el-icon-delete">Delete</el-dropdown-item>
+														<el-dropdown-item :command="{command: 'size', row: scope.row}"
+															v-if="scope.row.isDir || isMobile" icon="el-icon-s-data">Get
+															Size</el-dropdown-item>
+													</el-dropdown-menu>
+												</el-dropdown>
+											</div>
+										</div>
+									</template>
+								</el-table-column>
+							</el-table>
+							<el-row type="flex" align="middle" class="row-bg" justify="space-between"
+								style="margin-top: 20px">
+								<el-col style="text-align:right">
+									<el-checkbox v-model="hiddenFiles" style="margin-right:0px;">Show Hidden
+										Files</el-checkbox>
+								</el-col>
+							</el-row>
+						</el-card>
+						<!-- FILES LISTING - LIST MODE end-->
+
+						<!-- FILES LISTING - GALLERY MODE start-->
+						<div v-if="displayMode == 'gallery'">
+							<el-row style="margin-bottom:20px" v-if="totalCurrentDirs > 0">
+								<span style="font-family:Roboto;font-size:18px;font-weight:400;color:#555">Folders
+								</span>
+							</el-row>
+							<el-row v-if="totalCurrentDirs > 0">
+								<div v-for="row of this.tableDataFinal" @click="openDirFromList(row.name)"
+									style="display: inline-block;margin:10px;cursor:pointer">
+									<div v-if="row.isDir" :title="row.name"
+										style="width:200px;height:50px;border:1px solid #eee;font-size:13px;color:#444;padding-left:5px;margin:5px;border-radius:5px;display:table-cell;vertical-align:middle">
+										<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+											style="width:20px;height:20px;fill:#555;margin:0 auto;margin-right:5px;float:left">
+											<path
+												d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" />
+											<path d="M0 0h24v24H0z" fill="none" />
+										</svg>
+										<span
+											style="display:inline-block;vertical-align:middle;font-size:15px;line-height:20px;color:#555;font-weight:500;max-width:175px;overflow:hidden;text-overflow:ellipsis;max-height:40px">{{row.name}}</span>
+									</div>
+								</div>
+							</el-row>
+							<el-row style="margin-bottom:20px" v-if="totalCurrentFiles > 0">
+								<span style="font-family:Roboto;font-size:18px;font-weight:400;color:#555">Files
+								</span>
+							</el-row>
+							<div class="grid-container" v-if="totalCurrentFiles > 0">
+								<div class="grid-item" v-for="row of this.tableDataFinal" v-if="!row.isDir">
+									<img :title="row.name"
+										v-lazy="'/apis/thumbnail?type=small&name=' + row.name + '&parent=' + encodeURIComponent(currentDir)"
+										v-img="{group :  'gallery', title: row.name, src : '/apis/thumbnail?type=large&name=' + row.name + '&parent=' + encodeURIComponent(currentDir), sourceButton: 'true', sourceButtonDownloadLink: '/apis/download?path=' + (currentDir == '/' ? '/' : encodeURIComponent(currentDir) + '/') + row.name}">
+								</div>
+							</div>
+							<el-row v-if="totalCurrentFiles > 0"
+								style="display: flex;flex-wrap: wrap;flex-flow: row wrap;justify-content: center;">
+							</el-row>
+						</div>
+						<!-- FILES LISTING - GALLERY MODE end-->
+					</el-col>
+				</el-row>
+				<!-- FILES LISTING end-->
+			</el-main>
+		</el-container>
+		<!-- FILE MANAGER SCREEN end -->
+
+		<!-- REMOTE FILE UPLOAD DIALOGUE start -->
+		<el-dialog v-cloak title="Remote File Upload" :visible.sync="remoteUploadDialog">
+			<el-form>
+				<el-form-item label="File Url" label-width="150">
+					<el-input v-model="remoteUrl" auto-complete="off"></el-input>
+				</el-form-item>
+				<el-form-item label="Name" label-width="150">
+					<el-input v-model="remoteUrlName" auto-complete="off"></el-input>
+				</el-form-item>
+			</el-form>
+			<span slot="footer" class="dialog-footer">
+				<el-button @click="remoteUploadDialog = false;refresh()">Cancel</el-button>
+				<el-button type="primary" @click="remoteUpload()">Upload</el-button>
+			</span>
+		</el-dialog>
+		<!-- REMOTE FILE UPLOAD DIALOGUE end -->
+
+		<!-- VIDEO PLAYER DIALOGUE start -->
+		<el-dialog v-cloak :visible.sync="displayVideoPlayer">
+			<div style="width:100%;margin:0 auto;text-align:center">
+				<video width="400" controls ref="videoPlayer">
+					<source :src="videoSource" type="video/mp4"> Your browser does not support HTML5 video.
+				</video>
+			</div>
+			<span slot="footer" class="dialog-footer">
+				<el-button type="primary" @click="closeVideoPlayer()">Close</el-button>
+			</span>
+		</el-dialog>
+		<!-- VIDEO PLAYER DIALOGUE end -->
+
+		<file-uploader v-on:refresh="refresh()" :bus="fileUploaderBus" v-bind:current-dir="currentDir"></file-uploader>
+
+		<!-- AUDIO PLAYER DIALOGUE start-->
+		<div v-cloak v-if="displayAudioPlayer && !firstTimeOpened" style="
+				position:fixed;
+				bottom:0;
+				width:100%;
+				height:45px;
+				padding-top:10px;
+				margin:auto;
+				text-align:center;
+				background: rgba(0, 0, 0, 0.3);
+				z-index:1000;">
+			<audio controls style="width:700px;" ref="audioPlayer">
+				<source :src="audioSource" /> Your browser does not support the audio element.
+			</audio>
+			<span style="position:absolute;color:black;padding-left:30px;top:18px;font-weight:bold;cursor:pointer"
+				title="close" @click="closeAudioPlayer()">X</span>
+		</div>
+		<!-- AUDIO PLAYER DIALOGUE end-->
+
+		<!-- TEXT EDITOR DIALOGUE start -->
+		<el-dialog :title="textEditorCurrentOpenedFileName" :visible.sync="textEditorDialogueVisibility"
+			style="margin-top:-5vh">
+			<el-input type="textarea" :rows="15" placeholder="Please input" v-model="textEditorDialogueContent"
+				style="font-size:16px">
+			</el-input>
+			<div slot="footer" class="dialog-footer">
+				<el-button type="success" @click="saveTextFile()">Save</el-button>
+				<el-button @click="textEditorDialogueVisibility=false;textEditorDialogueContent=''">Close</el-button>
+			</div>
+		</el-dialog>
+		<!-- TEXT EDITOR DIALOGUE end -->
+	</div>
+	<script>
+		ELEMENT.locale(ELEMENT.lang.en);
+		Vue.use(VueLazyload);
+		new Vue({
+			el: '#vapp',
+			components: {
+				'file-uploader': httpVueLoader('/components/FileUploadComponent.html')
+			},
+			data: {
+				textEditorCurrentOpenedFileName: '',
+				textEditorDialogueContent: '',
+				textEditorDialogueVisibility: false,
+				audioSource: '',
+				currentDir: '/',
+				displayAudioPlayer: false,
+				displayMode: 'list',
+				displayVideoPlayer: false,
+				firstTimeOpened: true,
+				hiddenFiles: false,
+				isTableLoading: true,
+
+				multipleSelection: [],
+				operation: {
+					type: '',
+					parentPath: '',
+					selectedFiles: ''
+				},
+				remoteUploadDialog: false,
+				remoteUrl: '',
+				remoteUrlName: '',
+				tableData: [],
+				totalCurrentDirs: 0,
+				totalCurrentFiles: 0,
+				videoSource: '',
+				fileUploaderBus: new Vue()
+			},
+			watch: {
+				audioSource() {
+					this.$refs['audioPlayer'].load();
+				},
+				videoSource() {
+					this.$refs['videoPlayer'].load();
+				}
+			},
+			computed: {
+
+				isMobile() {
+					if (screen.width <= 720) {
+						return true;
+					} else {
+						return false;
+					}
+				},
+
+				stack() {
+					var substring = this.currentDir;
+					if (this.currentDir == '/') {
+						return [];
+					}
+					substring = substring.substring(1);
+					return substring.split('/');
+				},
+
+				pageWidth() {
+					if (this.displayMode == 'gallery') {
+						return 'calc(100% - 120px)';
+					}
+					return '900px';
+				},
+
+				tableDataFinal() {
+					this.totalCurrentFiles = 0;
+					this.totalCurrentDirs = 0;
+					var arrDir = [];
+					for (var temp of this.tableData) {
+						if (temp.isDir && (this.hiddenFiles || !temp.name.startsWith('.'))) {
+							this.totalCurrentDirs++;
+							arrDir.push(temp);
+						}
+					}
+
+					var arrFile = [];
+					for (var temp of this.tableData) {
+						if (!temp.isDir && (this.hiddenFiles || !temp.name.startsWith('.'))) {
+							if (this.displayMode == 'list' || (this.displayMode == 'gallery' && temp.isImage)) {
+								this.totalCurrentFiles++;
+								arrFile.push(temp);
+							}
+						}
+					}
+
+					arrDir.sort((o1, o2) => {
+						return o1.name.localeCompare(o2.name);
+					});
+					arrFile.sort((o1, o2) => {
+						return o1.name.localeCompare(o2.name);
+					});
+					return arrDir.concat(arrFile);
+				}
+
+			},
+
+			created() {
+				this.addShortcutListeners();
+				this.extractUrlParam();
+				this.refresh();
+			},
+
+			methods: {
+				// Add shortcut listeners
+				addShortcutListeners() {
+					document.addEventListener('keydown', (event) => {
+						let keyName = event.key;
+
+						if (keyName === 'Control') {
+							// do not alert when only Control key is pressed.
+							return;
+						}
+
+						if (event.ctrlKey) {
+							keyName = keyName.toUpperCase();
+							if (keyName == 'X') {
+								if (this.multipleSelection.length != 0) {
+									this.handleCommand('cut');
+								}
+							} else if (keyName == 'C') {
+								if (this.multipleSelection.length != 0) {
+									this.handleCommand('copy');
+								}
+							} else if (keyName == 'V') {
+								if (this.operation.parentPath.length != 0) {
+									this.handleCommand('paste');
+								}
+							}
+							// Even though event.key is not 'Control' (e.g., 'a' is pressed),
+							// event.ctrlKey may be true if Ctrl key is pressed at the same time.
+							//	alert(`Combination of ctrlKey + ${keyName}`);
+						} else if (keyName == 'Delete') {
+							if (this.multipleSelection.length != 0) {
+								this.handleCommand('delete');
+							}
+						} else if (keyName == 'F2') {
+							if (this.multipleSelection.length == 1) {
+								this.handleCommand('rename');
+							}
+						} else if (event.altKey && keyName == 'N' || keyName == 'n') {
+							this.addDirectory();
+						}
+					}, false);
+				},
+
+				play(row) {
+					if (row.isAudio) {
+						this.playAudio(row.name);
+					} else {
+						this.playVideo(row.name);
+					}
+				},
+
+				playAudio(name) {
+					this.displayAudioPlayer = true;
+					this.audioSource = '/apis/music?path=' + (this.currentDir == '/' ? '/' : encodeURIComponent(this.currentDir) + '/') + name;
+				},
+
+				playVideo(name) {
+					this.displayVideoPlayer = true;
+					this.videoSource = '/apis/download?path=' + (this.currentDir == '/' ? '/' : encodeURIComponent(this.currentDir) + '/') + name;
+				},
+
+				openLocalUploadDialog() {
+					this.fileUploaderBus.$emit("openLocalUploadDialog");
+				},
+
+				closeAudioPlayer() {
+					this.displayAudioPlayer = false;
+					this.audioSource = '';
+					this.$refs.audioPlayer.load();
+				},
+
+				closeVideoPlayer() {
+					this.displayVideoPlayer = false;
+					this.videoSource = '';
+					this.$refs.videoPlayer.load();
+				},
+
+				extractUrlParam() {
+					var paramsPath = location.search.substring(1);
+					if (paramsPath) {
+						var parameters = paramsPath.split("&");
+						if (parameters.length > 0) {
+							var firstParam = paramsPath;
+							if (firstParam.indexOf('=') != -1) {
+								firstParamVal = firstParam.split('=')[1];
+								if (firstParamVal) {
+									firstParamVal = unescape(firstParamVal);
+									if (firstParamVal) {
+										this.currentDir = firstParamVal;
+									}
+								}
+							}
+						}
+					}
+				},
+
+				openRemoteUploadDialog() {
+					this.remoteUrl = '';
+					this.remoteUrlName = '';
+					this.remoteUploadDialog = true;
+				},
+
+				setOpearation(type) {
+					this.operation.type = type;
+					this.operation.parentPath = this.currentDir;
+					this.operation.selectedFiles = this.multipleSelection;
+				},
+
+				handleCommand(command) {
+					if (command == 'cut') {
+						this.setOpearation('cut');
+					} else if (command == 'copy') {
+						this.setOpearation('copy');
+					} else if (command == 'paste') {
+						this.paste();
+					} else if (command == 'rename') {
+						this.rename();
+					} else if (command == 'size') {
+						this.fetchSize();
+					} else if (command == 'delete') {
+						this.delete();
+					} else if (command == 'download-zip') {
+						this.downloadZip();
+					}
+				},
+
+				handleRowActions(obj) {
+					let command = obj.command;
+					let name = obj.row.name;
+					if (command == 'cut' || command == 'copy') {
+						this.operation.type = command;
+						this.operation.parentPath = this.currentDir;
+						this.operation.selectedFiles = [name];
+					} else if (command == 'rename') {
+						this.$prompt('Please enter new name', {
+							confirmButtonText: 'Ok',
+							cancelButtonText: 'Cancel',
+							inputValue: name
+						}).then(value => {
+							value = value.value;
+							if (value) {
+								axios.post('/apis/rename', {
+									'sourceDir': this.currentDir,
+									'newName': value,
+									'oldName': name
+								}).then((response) => {
+									this.refresh();
+								}).catch(() => {
+									this.$message({
+										type: 'error',
+										message: `Unable to rename file`,
+										center: true
+									});
+								});
+							}
+						}).catch(() => { });
+					} else if (command == 'size') {
+						this.fetchSizeSse([name]);
+					} else if (command == 'delete') {
+						this.$confirm('Are you sure want to permanently delete ?', {
+							confirmButtonText: 'Yes',
+							cancelButtonText: 'No',
+							type: 'warning'
+						}).then(() => {
+							axios.post('/apis/delete', {
+								'sourceDir': this.currentDir,
+								'files': [name]
+							}).then((response) => {
+								this.refresh();
+							}).catch(() => {
+								this.$message({
+									type: 'error',
+									message: 'Unable to delete files',
+									center: true
+								});
+							});
+						}).catch(() => { });
+					} else if (command == 'download' && !obj.row.isDir) {
+						document.location = '/apis/download?path=' + encodeURIComponent((this.currentDir == '/' ? '/' : this.currentDir + '/') + name);
+					} else if (command == 'download' && obj.row.isDir) {
+						axios.post('/apis/download-zip', {
+							'sourceDir': this.currentDir,
+							'files': [name]
+						}, { responseType: 'blob' })
+							.then(response => {
+								// Retrieve the filename from the Content-Disposition header
+								const contentDisposition = response.headers['content-disposition'];
+								const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+								const matches = filenameRegex.exec(contentDisposition);
+								const filename = matches && matches[1] ? matches[1].replace(/['"]/g, '') : 'output.zip';
+
+								// Create a temporary URL for the downloaded file
+								const url = window.URL.createObjectURL(response.data);
+
+								// Open a new window or tab with the download URL
+								window.open(url, '_blank');
+
+								// Clean up the temporary URL after a short delay
+								setTimeout(() => {
+									window.URL.revokeObjectURL(url);
+								}, 100);
+							})
+							.catch(error => {
+								console.error('Error:', error);
+							});
+					}
+
+				},
+
+				openTextFile(name) {
+					axios.post(`/apis/read-text-file`, {
+						'sourceDir': this.currentDir,
+						'name': name
+					}).then((response) => {
+						response = response.data;
+						if (response.fetched) {
+							this.textEditorCurrentOpenedFileName = name;
+							this.textEditorDialogueContent = response.content;
+							this.textEditorDialogueVisibility = true;
+						} else {
+							document.location = '/apis/download?path=' + encodeURIComponent((this.currentDir == '/' ? '/' : this.currentDir + '/') + name);
+						}
+
+					}).catch(() => {
+						this.$message({
+							type: 'error',
+							message: 'Unable to fetch file',
+							center: true
+						});
+					});
+				},
+
+				saveTextFile() {
+					axios.post(`/apis/save-text-file`, {
+						'sourceDir': this.currentDir,
+						'name': this.textEditorCurrentOpenedFileName,
+						'content': this.textEditorDialogueContent
+					}).then((response) => {
+						this.$message({
+							type: 'success',
+							message: 'Your file have been saved',
+							center: true
+						});
+						for (let obj of this.tableData) {
+							if (obj.name == this.textEditorCurrentOpenedFileName) {
+								obj.size = response.data;
+							}
+						}
+					}).catch(() => {
+						this.$message({
+							type: 'error',
+							message: 'Unable to fetch file',
+							center: true
+						});
+					});
+				},
+
+				fetchSize() {
+					this.fetchSizeSse(this.multipleSelection);
+				},
+
+				async fetchSizeSse(files) {
+
+					try {
+						const controller = new AbortController();
+						const signal = controller.signal;
+
+						const response = await fetch('/apis/size-sse', {
+							method: "POST",
+							cache: "no-cache",
+							keepalive: true,
+							headers: {
+								"Content-Type": "application/json",
+								"Accept": "text/event-stream",
+							},
+							body: JSON.stringify({
+								'sourceDir': this.currentDir,
+								'files': files
+							}),
+							signal: signal
+						});
+
+						const reader = response.body.getReader();
+
+						let messageBox;
+						while (true) {
+							const { value, done } = await reader.read();
+
+							let message = new TextDecoder().decode(value);
+
+							if (message && message.startsWith('data:')) {
+								message = message.substring(5).trim();
+							}
+							if (message) {
+								message = message.trim();
+							}
+							if (message && message.indexOf('data:') != -1) {
+								message = message.substring(0, message.indexOf('data:'));
+							}
+							if (message) {
+								message = message.trim();
+							}
+							if (done) {
+								if (!messageBox && message && message.length > 0) {
+									messageBox = this.$message({
+										type: 'info',
+										message: message,
+										center: true,
+										duration: 0,
+										onClose: () => {
+											controller.abort();
+										},
+										customClass: 'custom-message-box',
+									});
+								}
+
+								if (messageBox) {
+									setTimeout(() => messageBox.close(), 3000);
+								}
+
+								return;
+							}
+							if (!message || message.length == 0) {
+								continue;
+							}
+							if (!messageBox) {
+								messageBox = this.$message({
+									type: 'info',
+									message: message,
+									center: true,
+									showClose: true,
+									duration: 0,
+									onClose: () => {
+										controller.abort();
+									},
+									customClass: 'custom-message-box',
+								});
+							} else {
+								messageBox.message = message;
+							}
+						}
+					} catch (error) {
+						
+					}
+				},
+
+				paste() {
+					axios.post(`/apis/${this.operation.type}`, {
+						'sourceDir': this.operation.parentPath,
+						'files': this.operation.selectedFiles,
+						'destinationDir': this.currentDir
+					}).then((response) => {
+						this.refresh();
+						this.operation.parentPath = '';
+					}).catch(() => {
+						this.operation.parentPath = '';
+						this.$message({
+							type: 'error',
+							message: `Unable to ${this.operation.type} file(s)`,
+							center: true
+						});
+					});
+				},
+
+				rename() {
+					this.$prompt('Please enter new name', {
+						confirmButtonText: 'Ok',
+						cancelButtonText: 'Cancel',
+						inputValue: this.multipleSelection[0]
+					}).then(value => {
+						value = value.value;
+						if (value) {
+							axios.post('/apis/rename', {
+								'sourceDir': this.currentDir,
+								'newName': value,
+								'oldName': this.multipleSelection[0]
+							}).then((response) => {
+								this.refresh();
+							}).catch(() => {
+								this.$message({
+									type: 'error',
+									message: `Unable to rename file`,
+									center: true
+								});
+							});
+						}
+					}).catch(() => { });
+				},
+
+				delete() {
+					this.$confirm('Are you sure want to permanently delete ?', {
+						confirmButtonText: 'Yes',
+						cancelButtonText: 'No',
+						type: 'warning'
+					}).then(() => {
+						axios.post('/apis/delete', {
+							'sourceDir': this.currentDir,
+							'files': this.multipleSelection
+						}).then((response) => {
+							this.refresh();
+						}).catch(() => {
+							this.$message({
+								type: 'error',
+								message: 'Unable to delete files',
+								center: true
+							});
+						});
+					}).catch(() => { });
+				},
+
+				remoteUpload() {
+					this.remoteUploadDialog = false;
+					axios.post('/apis/remote-upload', {
+						'sourceDir': this.currentDir,
+						'url': this.remoteUrl,
+						'name': this.remoteUrlName
+					}).then((response) => {
+						this.$message({
+							type: 'success',
+							message: 'Your file will soon be uploaded',
+							center: true
+						});
+						this.openDir(this.currentDir);
+					});
+
+				},
+				openStack(index) {
+					var path = '';
+					for (var i = 0; i <= index; i++) {
+						path = path + '/' + this.stack[i];
+					}
+					this.openDir(path);
+				},
+
+				addDirectory() {
+					this.$prompt('Please enter directory name', {
+						confirmButtonText: 'Add',
+						cancelButtonText: 'Cancel',
+					}).then(value => {
+						if (value) {
+							axios.post('/apis/create-dir', {
+								'name': value.value,
+								'sourceDir': this.currentDir
+							}).then((response) => {
+								this.$message({
+									type: 'success',
+									message: 'Directory Added',
+									center: true
+								});
+								this.refresh();
+							}).catch(() => {
+								this.$message({
+									type: 'error',
+									message: 'Unable to add directory',
+									center: true
+								});
+							});
+						}
+					}).catch(() => { });
+				},
+
+				refresh() {
+					this.openDir(this.currentDir);
+				},
+
+				handleSelectionChange(val) {
+					this.multipleSelection = val.map(obj => obj.name);
+				},
+
+				openDirFromList(name) {
+					if (this.currentDir == '/') {
+						this.openDir('/' + name);
+					} else {
+						this.openDir(this.currentDir + '/' + name);
+					}
+				},
+
+				openDir(path) {
+					this.isTableLoading = true;
+					window.history.replaceState('', 'File Manager', '?path=' + path);
+					axios.get('/apis/list?path=' + encodeURIComponent(path))
+						.then((response) => {
+							this.currentDir = path;
+							this.tableData = response.data;
+							this.isTableLoading = false;
+							this.firstTimeOpened = false;
+						})
+						.catch((error) => {
+							this.$message({
+								type: 'error',
+								message: error.response.data.message,
+								center: true
+							});
+						});
+				},
+
+				getThumbnailSmall(name) {
+					return
+				},
+
+				viewFile(row) {
+					if (row.isText || !row.isImage) {
+						this.openTextFile(row.name);
+					} else {
+						this.download(row.name);
+					}
+				},
+
+				download(name) {
+					document.location = '/apis/download?path=' + encodeURIComponent((this.currentDir == '/' ? '/' : this.currentDir + '/') + name);
+				},
+
+				newCommand(command) {
+					if (command == 'folder') {
+						this.addDirectory();
+					} else {
+						this.$prompt('Please enter file name', {
+							confirmButtonText: 'Add',
+							cancelButtonText: 'Cancel',
+						}).then(name => {
+							name = name.value;
+							for (let obj of this.tableData) {
+								if (obj.name == name) {
+									this.$message({
+										type: 'error',
+										message: 'Unable to add file, already exists.',
+										center: true
+									});
+									return;
+								}
+							}
+							debugger;
+							this.tableData.push({
+								'name': name,
+								'isDir': false,
+								'isText': true,
+								'size': "0 B"
+							});
+							this.textEditorCurrentOpenedFileName = name;
+							this.textEditorDialogueContent = '';
+							this.textEditorDialogueVisibility = true;
+						}).catch(() => { });
+					}
+				},
+
+				downloadZip() {
+					axios.post('/apis/download-zip', {
+						'sourceDir': this.currentDir,
+						'files': this.multipleSelection
+					}, { responseType: 'blob' })
+						.then(response => {
+							// Retrieve the filename from the Content-Disposition header
+							const contentDisposition = response.headers['content-disposition'];
+							const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+							const matches = filenameRegex.exec(contentDisposition);
+							const filename = matches && matches[1] ? matches[1].replace(/['"]/g, '') : 'output.zip';
+
+							// Create a temporary URL for the downloaded file
+							const url = window.URL.createObjectURL(response.data);
+
+							// Open a new window or tab with the download URL
+							window.open(url, '_blank');
+
+							// Clean up the temporary URL after a short delay
+							setTimeout(() => {
+								window.URL.revokeObjectURL(url);
+							}, 100);
+						})
+						.catch(error => {
+							console.error('Error:', error);
+						});
+				}
+			}
+		});
+
+		function formatSize(num, MAX) {
+			let suffix, d = num;
+			if ((d / 1000000000) >= 1) {
+				d = d / 1000000000;
+				// if max values less than 20 GB
+				if (MAX > 2000000000) {
+					d = Math.ceil(d);
+				} else {
+					d = d.toFixed(2);
+				}
+				suffix = " GB";
+			} else if ((d / 1000000) >= 1) {
+				d = d / 1000000;
+				if (MAX > 2000000) {
+					d = Math.ceil(d);
+				} else {
+					d = d.toFixed(1);
+				}
+				suffix = " MB";
+			} else if ((d / 1000) >= 1) {
+				d = d / 1000;
+				if (MAX > 20000) {
+					d = Math.ceil(d);
+				} else {
+					d = d.toFixed(1);
+				}
+				suffix = " KB";
+			} else {
+				d = Math.ceil(d);
+				suffix = " Bytes";
+			}
+			return d + suffix;
+		}
+
+		function parseTime(d) {
+			d = parseInt(d);
+			d = Number(d);
+			var h = Math.floor(d / 3600);
+			var m = Math.floor(d % 3600 / 60);
+			m = m + 1;
+
+			var hDisplay = h > 0 ? h + (h == 1 ? " Hour, " : " Hours, ") : "";
+			var mDisplay = m > 0 ? m + (m == 1 ? " Minute " : " Minutes ") : "";
+			return hDisplay + mDisplay;
+		}
+	</script>
+</body>
+
+</html>
