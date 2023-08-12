@@ -3,13 +3,10 @@ use std::fs;
 use std::io::BufWriter;
 use std::num::NonZeroU32;
 
-use actix_web::web;
 use fast_image_resize as fr;
 use image::{ColorType, ImageEncoder};
 use image::codecs::png::PngEncoder;
 use image::io::Reader as ImageReader;
-
-use crate::AppState;
 
 const IMAGE_EXTENSIONS: [&str; 108] = ["3dv", "ai", "amf", "art", "ase", "awg", "blp", "bmp", "bw", "cd5", "cdr", "cgm", "cit", "cmx", "cpt",
 	"cr2", "cur", "cut", "dds", "dib", "djvu", "dxf", "e2d", "ecw", "egt", "emf", "eps", "exif", "gbr",
@@ -20,7 +17,7 @@ const IMAGE_EXTENSIONS: [&str; 108] = ["3dv", "ai", "amf", "art", "ase", "awg", 
 	"sid", "stl", "sun", "svg", "sxd", "tga", "tif", "tiff", "v2d", "vnd", "vrml", "vtf", "wdp", "webp", "wmf",
 	"x3d", "xar", "xbm", "xcf", "xpm"];
 
-pub(crate) fn create_thumbnail(app_state: &web::Data<AppState>, src_img_path: &String, thumbnail_size: &String)
+pub(crate) fn create_thumbnail(base_dir: &String, src_img_path: &String, thumbnail_size: &String)
 							   -> Result<String, Box<dyn Error>> {
 	let new_height: u32;
 	if "small".eq(thumbnail_size) {
@@ -28,12 +25,12 @@ pub(crate) fn create_thumbnail(app_state: &web::Data<AppState>, src_img_path: &S
 	} else {
 		new_height = 720;
 	}
-	let relative_path = &src_img_path[app_state.base_dir.len() + 1..src_img_path.len()];
+	let relative_path = &src_img_path[base_dir.len() + 1..src_img_path.len()];
 	if relative_path.starts_with(".thumbnails-") {
 		return Ok(src_img_path.to_string());
 	}
 	let mut target_img_path = String::new();
-	target_img_path.push_str(&app_state.base_dir);
+	target_img_path.push_str(base_dir);
 	target_img_path.push(std::path::MAIN_SEPARATOR);
 	target_img_path.push_str(&".thumbnails-height-");
 	target_img_path.push_str(&new_height.to_string());

@@ -102,7 +102,7 @@ struct ThumbnailQuery {
 async fn thumbnail(query: web::Query<ThumbnailQuery>, app_state: web::Data<AppState>) -> actix_web::Result<NamedFile> {
 	let final_path = app_state.generate_absolute_path1(&query.source_dir_path, &query.file_name);
 	fs::metadata(&final_path)?;
-	let file = match imageutils::create_thumbnail(&app_state, &final_path, &query.thumbnail_size) {
+	let file = match imageutils::create_thumbnail(&app_state.base_dir, &final_path, &query.thumbnail_size) {
 		Ok(target_file) => {
 			target_file
 		}
